@@ -1,5 +1,16 @@
 {
-    "urls": [
-        "http://manage-tw.vidnoz.com/frontend/page/aritcle-list"
-    ]
+    "urls": {
+        "en": "http://manage.vidnoz.com/frontend/login",
+        "jp": "http://manage-jp.vidnoz.com/frontend/login",
+        "it": "http://manage-it.vidnoz.com/frontend/login",
+        "fr": "http://manage-fr.vidnoz.com/frontend/login",
+        "de": "http://manage-de.vidnoz.com/frontend/login",
+        "ar": "http://manage-ar.vidnoz.com/frontend/login",
+        "pt": "http://manage-pt.vidnoz.com/frontend/login",
+        "es": "http://manage-es.vidnoz.com/frontend/login",
+        "kr": "http://manage-kr.vidnoz.com/frontend/login",
+        "nl": "http://manage-nl.vidnoz.com/frontend/login",
+        "tr": "http://manage-tr.vidnoz.com/frontend/login",
+        "tw": "http://manage-tw.vidnoz.com/frontend/login"
+    }
 }

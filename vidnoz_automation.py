@@ -10,6 +10,7 @@ import sys
 import json
 import os
 import traceback
+import argparse
 
 DEFAULT_SITES = []
 
@@ -396,10 +397,11 @@ def perform_multi_page_updates(driver, base_url):
         traceback.print_exc()
         return False
 
-def process_site(driver, site_url):
+def process_site(driver, site_url, site_label=None):
     """处理单个站点的登录和更新操作"""
     try:
-        print(f"\n===== 开始处理站点: {site_url} =====")
+        label_info = f" [{site_label}]" if site_label else ""
+        print(f"\n===== 开始处理站点{label_info}: {site_url} =====")
         
         # 从URL中提取基础URL
         base_url = '/'.join(site_url.split('/')[:3])  # 获取 http(s)://domain.com 部分
@@ -477,9 +479,9 @@ def process_site(driver, site_url):
             # 执行多页面更新操作
             multi_page_result = perform_multi_page_updates(driver, base_url)
             if not multi_page_result:
-                print("\n❌ 多页面更新操作失败")
+                print(f"\n❌ 站点{label_info} 多页面更新操作失败")
                 return False
-            print("\n✅ 多页面更新操作成功完成")
+            print(f"\n✅ 站点{label_info} 多页面更新操作成功完成")
             return True
             
         # 如果不执行多页面更新，执行单一按钮更新
@@ -546,38 +548,128 @@ def process_site(driver, site_url):
                 return deployment_result
             else:
                 print("\n===================================")
-                print(f"⚠️ 站点 {site_url} 无法点击确认按钮，部署可能未启动。")
+                print(f"⚠️ 站点{label_info} 无法点击确认按钮，部署可能未启动。")
                 print("===================================\n")
                 take_screenshot(driver, "no_confirmation_button")
                 return False
                 
         except Exception as e:
-            print(f"\n❌ 站点 {site_url} 更新过程出错: {e}")
+            print(f"\n❌ 站点{label_info} 更新过程出错: {e}")
             take_screenshot(driver, "update_process_error")
             traceback.print_exc()
             return False
             
     except Exception as e:
-        print(f"\n❌ 站点 {site_url} 处理过程中出现错误: {e}")
+        print(f"\n❌ 站点{label_info} 处理过程中出现错误: {e}")
         take_screenshot(driver, "process_site_error")
         traceback.print_exc()
         return False
     
     return None  # 默认返回未知状态
 
-def automate_vidnoz(site_urls=None):
-    """批量处理多个站点的主函数"""
-    if site_urls is None:
-        site_urls = DEFAULT_SITES
+def load_sites_from_file(file_path, include_sites=None, exclude_sites=None):
+    """从文件加载站点URL列表
     
-    # 如果提供的是单个URL字符串，转换为列表
-    if isinstance(site_urls, str):
-        site_urls = [site_urls]
+    Args:
+        file_path: 文件路径
+        include_sites: 需要包含的站点标识列表，如 ['tw', 'en']
+        exclude_sites: 需要排除的站点标识列表，如 ['en']
+        
+    Returns:
+        dict: 含站点标识和URL的字典，如 {'tw': 'http://...', 'en': 'http://...'}
+    """
+    try:
+        if not os.path.exists(file_path):
+            print(f"文件不存在: {file_path}")
+            return None
+            
+        # 根据文件扩展名决定如何加载
+        ext = os.path.splitext(file_path)[1].lower()
+        sites_dict = {}
+        
+        if ext == '.json':
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                
+                # 处理新格式: urls 是一个字典
+                if isinstance(data, dict) and 'urls' in data and isinstance(data['urls'], dict):
+                    sites_dict = data['urls']
+                    print(f"从JSON文件加载了 {len(sites_dict)} 个站点")
+                
+                # 处理旧格式: urls 是一个列表
+                elif isinstance(data, dict) and 'urls' in data and isinstance(data['urls'], list):
+                    urls_list = data['urls']
+                    # 使用索引作为键
+                    for i, url in enumerate(urls_list):
+                        sites_dict[f"site{i+1}"] = url
+                    print(f"从JSON文件加载了 {len(sites_dict)} 个站点 (旧格式转换)")
+                
+                # 处理直接的列表
+                elif isinstance(data, list):
+                    # 使用索引作为键
+                    for i, url in enumerate(data):
+                        sites_dict[f"site{i+1}"] = url
+                    print(f"从JSON文件加载了 {len(sites_dict)} 个站点 (列表格式)")
+                
+                else:
+                    print("JSON格式不正确，应为URL字典、URL列表或包含'urls'键的对象")
+                    return None
+                
+        elif ext == '.txt':
+            with open(file_path, 'r', encoding='utf-8') as f:
+                # 去除空行和空格，使用行号作为键
+                lines = [line.strip() for line in f if line.strip()]
+                for i, url in enumerate(lines):
+                    sites_dict[f"site{i+1}"] = url
+                print(f"从文本文件加载了 {len(sites_dict)} 个站点")
+        else:
+            print(f"不支持的文件类型: {ext}")
+            return None
+            
+        # 应用包含和排除过滤
+        filtered_dict = {}
+        
+        if include_sites:
+            # 只包含指定的站点
+            include_list = include_sites.split(',')
+            print(f"仅包含这些站点: {include_list}")
+            for site_id in include_list:
+                if site_id in sites_dict:
+                    filtered_dict[site_id] = sites_dict[site_id]
+                else:
+                    print(f"警告: 指定包含的站点 '{site_id}' 不存在")
+        
+        elif exclude_sites:
+            # 排除指定的站点
+            exclude_list = exclude_sites.split(',')
+            print(f"排除这些站点: {exclude_list}")
+            for site_id, url in sites_dict.items():
+                if site_id not in exclude_list:
+                    filtered_dict[site_id] = url
+        
+        else:
+            # 不过滤，使用所有站点
+            filtered_dict = sites_dict
+        
+        print(f"过滤后保留了 {len(filtered_dict)} 个站点")
+        
+        return filtered_dict
+        
+    except Exception as e:
+        print(f"加载站点文件时出错: {e}")
+        traceback.print_exc()
+        return None
+
+def automate_vidnoz(sites_dict=None):
+    """批量处理多个站点的主函数"""
+    if sites_dict is None or not sites_dict:
+        print("没有提供有效的站点列表")
+        return {}
     
     # 显示待处理站点
-    print(f"准备处理 {len(site_urls)} 个站点:")
-    for i, url in enumerate(site_urls, 1):
-        print(f"{i}. {url}")
+    print(f"准备处理 {len(sites_dict)} 个站点:")
+    for i, (site_id, url) in enumerate(sites_dict.items(), 1):
+        print(f"{i}. [{site_id}] {url}")
     print("\n")
     
     # 显示多页面更新设置状态
@@ -614,13 +706,16 @@ def automate_vidnoz(site_urls=None):
     results = {}
     try:
         # 处理每个站点
-        for i, site_url in enumerate(site_urls, 1):
-            print(f"\n[{i}/{len(site_urls)}] 处理站点: {site_url}")
-            result = process_site(driver, site_url)
-            results[site_url] = result
+        for i, (site_id, site_url) in enumerate(sites_dict.items(), 1):
+            print(f"\n[{i}/{len(sites_dict)}] 处理站点 [{site_id}]: {site_url}")
+            result = process_site(driver, site_url, site_id)
+            results[site_id] = {
+                'url': site_url,
+                'result': result
+            }
             
             # 站点之间稍作暂停
-            if i < len(site_urls):
+            if i < len(sites_dict):
                 print(f"等待 5 秒后继续下一个站点...")
                 time.sleep(5)
     
@@ -635,9 +730,9 @@ def automate_vidnoz(site_urls=None):
         
         # 显示汇总结果
         print("\n===== 批量处理结果汇总 =====")
-        successful = sum(1 for result in results.values() if result is True)
-        failed = sum(1 for result in results.values() if result is False)
-        unknown = sum(1 for result in results.values() if result is None)
+        successful = sum(1 for site in results.values() if site['result'] is True)
+        failed = sum(1 for site in results.values() if site['result'] is False)
+        unknown = sum(1 for site in results.values() if site['result'] is None)
         
         print(f"总站点数: {len(results)}")
         print(f"成功: {successful}")
@@ -645,57 +740,43 @@ def automate_vidnoz(site_urls=None):
         print(f"状态未知: {unknown}")
         
         print("\n详细结果:")
-        for url, result in results.items():
-            status = "✅ 成功" if result is True else "❌ 失败" if result is False else "⚠️ 未知"
-            print(f"{status}: {url}")
+        for site_id, site_info in results.items():
+            status = "✅ 成功" if site_info['result'] is True else "❌ 失败" if site_info['result'] is False else "⚠️ 未知"
+            print(f"{status}: [{site_id}] {site_info['url']}")
         
         print("\n程序执行完毕。")
         
         return results
 
-def load_sites_from_file(file_path):
-    """从文件加载站点URL列表"""
-    try:
-        if not os.path.exists(file_path):
-            print(f"文件不存在: {file_path}")
-            return None
-            
-        # 根据文件扩展名决定如何加载
-        ext = os.path.splitext(file_path)[1].lower()
-        if ext == '.json':
-            with open(file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                # 允许多种JSON格式
-                if isinstance(data, list):
-                    return data
-                elif isinstance(data, dict) and 'urls' in data:
-                    return data['urls']
-                else:
-                    print("JSON格式不正确，应为URL列表或包含'urls'键的对象")
-                    return None
-        elif ext == '.txt':
-            with open(file_path, 'r', encoding='utf-8') as f:
-                # 去除空行和空格
-                return [line.strip() for line in f if line.strip()]
-        else:
-            print(f"不支持的文件类型: {ext}")
-            return None
-    except Exception as e:
-        print(f"加载站点文件时出错: {e}")
-        traceback.print_exc()
-        return None
+def parse_args():
+    """解析命令行参数"""
+    parser = argparse.ArgumentParser(description='Vidnoz站点自动化工具')
+    parser.add_argument('file', nargs='?', help='站点列表文件路径 (.json 或 .txt)')
+    parser.add_argument('--include', help='仅包含指定的站点，以逗号分隔，如 tw,en')
+    parser.add_argument('--exclude', help='排除指定的站点，以逗号分隔，如 en')
+    
+    return parser.parse_args()
 
 if __name__ == "__main__":
-    # 检查是否有命令行参数
-    if len(sys.argv) > 1:
-        file_path = sys.argv[1]
-        print(f"从文件加载站点列表: {file_path}")
-        sites = load_sites_from_file(file_path)
+    args = parse_args()
+    
+    if args.file:
+        print(f"从文件加载站点列表: {args.file}")
+        
+        if args.include and args.exclude:
+            print("错误: --include 和 --exclude 选项不能同时使用")
+            sys.exit(1)
+        
+        sites = load_sites_from_file(
+            args.file,
+            include_sites=args.include,
+            exclude_sites=args.exclude
+        )
+        
         if sites:
             automate_vidnoz(sites)
         else:
-            print("无法从文件加载站点，使用默认站点列表")
-            automate_vidnoz()
+            print("无法从文件加载站点或过滤后没有站点")
     else:
-        # 使用默认站点列表
-        automate_vidnoz() 
+        print("未提供站点列表文件，请指定 .json 或 .txt 文件")
+        sys.exit(1) 

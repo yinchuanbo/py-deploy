@@ -1,19 +1,79 @@
+# Vidnoz 站点自动化工具
+
+这个工具可以自动登录并更新 Vidnoz 管理网站的各种页面样式。
+
 ## 安装
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## 运行
+## 站点配置
+
+站点配置使用 JSON 格式，支持为每个站点指定标识符：
+
+```json
+{
+  "urls": {
+    "tw": "http://manage-tw.vidnoz.com/frontend/page/aritcle-list",
+    "en": "http://manage.vidnoz.com/frontend/page/aritcle-list"
+  }
+}
+```
+
+## 运行方式
+
+### 基本用法
+
+处理配置文件中的所有站点：
 
 ```bash
 python vidnoz_automation.py sites.json
 ```
 
-## 开启全局刷新
+### 高级选项
 
-- vidnoz_automation.py
+#### 仅处理特定站点
+
+使用 `--include` 选项指定需要处理的站点标识符：
 
 ```bash
+# 仅处理 tw 站点
+python vidnoz_automation.py sites.json --include=tw
+
+# 处理 tw 和 en 站点
+python vidnoz_automation.py sites.json --include=tw,kr
+```
+
+#### 排除特定站点
+
+使用 `--exclude` 选项指定要排除的站点标识符：
+
+```bash
+# 排除 en 站点，处理其它所有站点
+python vidnoz_automation.py sites.json --exclude=kr
+
+# 排除 tw 和 en 站点，处理其它所有站点
+python vidnoz_automation.py sites.json --exclude=tw,kr
+```
+
+## 更新模式设置
+
+### 基本更新模式
+
+默认情况下，脚本只更新"公共样式"。
+
+### 全局刷新模式
+
+如需启用全局刷新模式（处理所有页面和所有按钮），请修改脚本中的设置：
+
+```python
+# 在 vidnoz_automation.py 文件中修改：
 EXECUTE_MULTI_PAGE_UPDATE = True
 ```
+
+全局刷新模式会依次处理以下页面的所有按钮：
+
+1. aritcle-list 页面
+2. faq-list 页面
+3. pressroom-list 页面（如果存在）
