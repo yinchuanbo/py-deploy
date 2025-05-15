@@ -683,6 +683,8 @@ def automate_vidnoz(sites_dict=None):
     chrome_options = Options()
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    # Add headless mode to run Chrome without opening a window
+    chrome_options.add_argument("--headless")
     # Add ignore SSL certificate error options
     chrome_options.add_argument("--ignore-certificate-errors")
     chrome_options.add_argument("--ignore-ssl-errors")
@@ -691,18 +693,18 @@ def automate_vidnoz(sites_dict=None):
     chrome_options.add_argument("--disable-infobars")
     # Add disable extensions option
     chrome_options.add_argument("--disable-extensions")
-    # Set window size to ensure elements are visible
+    # Set window size to ensure elements are visible (important in headless mode)
     chrome_options.add_argument("--window-size=1920,1080")
     
     # Add experimental options
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option("useAutomationExtension", False)
     
-    print("Setting up Chrome driver...")
+    print("Setting up Chrome driver in headless mode...")
     driver = webdriver.Chrome(options=chrome_options)
     
-    # Maximize window to ensure all elements are visible
-    driver.maximize_window()
+    # Even in headless mode, we set window size to ensure all elements are accessible
+    driver.set_window_size(1920, 1080)
     
     results = {}
     try:
