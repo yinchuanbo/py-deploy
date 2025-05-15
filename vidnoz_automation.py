@@ -324,7 +324,7 @@ def click_button_with_confirmation(driver, button_text, site_url):
 def perform_multi_page_updates(driver, base_url):
     """Perform multi-page button click update operations"""
     if not EXECUTE_MULTI_PAGE_UPDATE:
-        print("\nMulti-page update feature is disabled. To enable, set EXECUTE_MULTI_PAGE_UPDATE = True\n")
+        print("\nMulti-page update feature is disabled. To enable, set EXECUTE_MULTI_PAGE_UPDATE = False\n")
         return True
     
     print("\n===== Beginning multi-page update operations =====\n")
