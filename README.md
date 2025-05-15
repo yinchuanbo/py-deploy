@@ -15,8 +15,8 @@ pip install -r requirements.txt
 ```json
 {
   "urls": {
-    "tw": "http://manage-tw.vidnoz.com/frontend/page/aritcle-list",
-    "en": "http://manage.vidnoz.com/frontend/page/aritcle-list"
+    "en": "http://manage.vidnoz.com/frontend/login",
+    "jp": "http://manage-jp.vidnoz.com/frontend/login"
   }
 }
 ```
