@@ -11,11 +11,7 @@ import json
 import os
 import traceback
 
-# 默认站点列表
-DEFAULT_SITES = [
-    "http://manage-tw.vidnoz.com/frontend/page/aritcle-list",
-    # 在这里添加更多站点
-]
+DEFAULT_SITES = []
 
 # 人工控制变量，决定是否执行多页面按钮点击序列
 EXECUTE_MULTI_PAGE_UPDATE = False
