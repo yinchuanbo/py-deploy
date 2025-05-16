@@ -25,6 +25,9 @@ SITE_INTERVAL_TIME = 20  # 站点之间等待的秒数
 LOGIN_RETRY_COUNT = 3  # 最大登录重试次数
 DEPLOYMENT_WAIT_TIME = 45  # 等待部署状态的秒数
 
+# 全局变量
+CURRENT_DRIVER = None    # 当前WebDriver实例
+
 # 自动化功能部分
 def take_screenshot(driver, name):
     """空函数，不进行截图"""
@@ -1020,9 +1023,6 @@ class VidnozApp:
         self.start_button = ttk.Button(buttons_frame, text="开始执行", command=self.start_automation)
         self.start_button.pack(side=tk.LEFT, padx=5)
         
-        self.stop_button = ttk.Button(buttons_frame, text="停止", state=tk.DISABLED, command=self.stop_automation)
-        self.stop_button.pack(side=tk.LEFT, padx=5)
-        
         # 日志区域
         log_frame = ttk.LabelFrame(main_frame, text="执行日志", padding=10)
         log_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -1094,7 +1094,6 @@ class VidnozApp:
         
         # 禁用开始按钮
         self.start_button.configure(state=tk.DISABLED)
-        self.stop_button.configure(state=tk.NORMAL)
         
         # 重定向控制台输出
         self.original_stdout = sys.stdout
@@ -1129,23 +1128,11 @@ class VidnozApp:
     
     def update_after_completion(self):
         self.start_button.configure(state=tk.NORMAL)
-        self.stop_button.configure(state=tk.DISABLED)
         self.status_var.set("执行完成")
         
         # 刷新最后的日志
         if hasattr(self, 'redirector'):
             self.redirector.flush()
-    
-    def stop_automation(self):
-        if not self.is_running:
-            return
-        
-        self.is_running = False
-        self.status_var.set("正在停止...")
-        
-        # 注意：简单地将is_running设为False只能在主代码中检查时起作用
-        # Selenium无法直接中断，但下一个站点不会开始
-        print("\n用户请求停止处理，将在当前站点完成后退出...")
     
     def update_ui(self):
         # 定时更新UI
