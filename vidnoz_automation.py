@@ -12,11 +12,18 @@ import json
 import os
 import traceback
 import argparse
+import random
 
 DEFAULT_SITES = []
 
 # Control variable to determine if multi-page button click sequence should be executed
 EXECUTE_MULTI_PAGE_UPDATE = False
+
+# Configuration variables
+LOGIN_WAIT_TIME = 15  # Seconds to wait for login completion (increased from 5)
+SITE_INTERVAL_TIME = 20  # Seconds to wait between sites (increased from 5)
+LOGIN_RETRY_COUNT = 3  # Maximum number of login retry attempts
+DEPLOYMENT_WAIT_TIME = 45  # Seconds to wait for deployment status (increased from 30)
 
 def take_screenshot(driver, name):
     """Empty function, does not take screenshots"""
@@ -194,8 +201,8 @@ def handle_confirmation_dialog(driver):
 
 def check_deployment_status(driver, site_url):
     """Check deployment status, returns True (success), False (failure) or None (unknown)"""
-    # Wait up to 30 seconds, check for success or failure indicators
-    max_wait_time = 30
+    # Wait longer for deployment status indicators
+    max_wait_time = DEPLOYMENT_WAIT_TIME  # Increased from 30 to 45 seconds
     start_time = time.time()
     deployment_status_found = False
     
@@ -421,11 +428,35 @@ def process_site(driver, site_url, site_label=None):
             except:
                 pass
         
-        # Check if login needed (if username input exists)
-        login_fields = driver.find_elements(By.CSS_SELECTOR, "input[placeholder='User Name']")
-        if login_fields and any(field.is_displayed() for field in login_fields):
+        # Add random delay to avoid rate limiting
+        rand_delay = random.uniform(1, 3)
+        time.sleep(rand_delay)
+        
+        # Login with retries
+        login_success = False
+        for login_attempt in range(LOGIN_RETRY_COUNT):
+            # Check if login needed (if username input exists)
+            login_fields = driver.find_elements(By.CSS_SELECTOR, "input[placeholder='User Name']")
+            if not login_fields or not any(field.is_displayed() for field in login_fields):
+                print("Already logged in, no need to login again")
+                login_success = True
+                break
+                
+            if login_attempt > 0:
+                print(f"\n----- Login Retry Attempt {login_attempt+1}/{LOGIN_RETRY_COUNT} -----")
+                # Refresh page before retry
+                try:
+                    print("Refreshing page before retry...")
+                    driver.refresh()
+                    time.sleep(3)
+                except:
+                    pass
+            
             print("Login page detected, performing login...")
             try:
+                # Wait a bit longer for login page to be fully loaded
+                time.sleep(3)
+                
                 username_field = WebDriverWait(driver, 10).until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, "input[placeholder='User Name']"))
                 )
@@ -440,6 +471,9 @@ def process_site(driver, site_url, site_label=None):
                 password_field.send_keys("123456")
                 
                 print("Clicking login button...")
+                login_button_clicked = False
+                
+                # Try clicking login button with standard method first
                 login_success = wait_and_click(driver, "//button[contains(., 'login')]", By.XPATH, 10, "login button")
                 if not login_success:
                     # Try other ways to find submit button
@@ -448,32 +482,69 @@ def process_site(driver, site_url, site_label=None):
                     for button in login_buttons:
                         if button.is_displayed() and button.is_enabled():
                             try:
-                                button.click()
-                                print("Clicked possible login button")
+                                driver.execute_script("arguments[0].click();", button)
+                                print("Clicked possible login button using JavaScript")
+                                login_button_clicked = True
                                 break
                             except:
-                                continue
+                                try:
+                                    button.click()
+                                    print("Clicked possible login button")
+                                    login_button_clicked = True
+                                    break
+                                except:
+                                    continue
+                else:
+                    login_button_clicked = True
                 
-                print("Waiting for login to complete...")
-                time.sleep(5)  # Increase login wait time
+                if not login_button_clicked:
+                    print("Could not find or click any login button")
+                    continue
+                
+                print(f"Waiting {LOGIN_WAIT_TIME} seconds for login to complete...")
+                time.sleep(LOGIN_WAIT_TIME)  # Increased wait time
+                
+                # Try clearing cookies and cache if this is a retry
+                if login_attempt > 0:
+                    print("Clearing cookies for this domain...")
+                    driver.delete_all_cookies()
+                    time.sleep(2)
                 
                 # Check if still on login page
                 login_fields_after = driver.find_elements(By.CSS_SELECTOR, "input[placeholder='User Name']")
                 if login_fields_after and any(field.is_displayed() for field in login_fields_after):
                     print("Login appears to have failed, still on login page")
-                    take_screenshot(driver, "login_failed")
-                    return False
+                    
+                    # Check for any error messages
+                    error_messages = driver.find_elements(By.CSS_SELECTOR, ".el-message--error, .error-message, .alert-danger")
+                    if error_messages and any(msg.is_displayed() for msg in error_messages):
+                        for msg in error_messages:
+                            if msg.is_displayed():
+                                print(f"Error message found: {msg.text}")
+                    
+                    # Continue to next retry attempt
+                    continue
+                else:
+                    print("Login successful!")
+                    login_success = True
+                    break
                 
-                # Re-navigate to target page
-                print("Re-navigating to target page...")
-                driver.get(site_url)
-                time.sleep(3)  # Wait for page to load
             except Exception as e:
                 print(f"Error during login process: {e}")
                 take_screenshot(driver, "login_error")
-                return False
-        else:
-            print("Already logged in, no need to login again")
+                traceback.print_exc()
+                # Continue to next retry attempt
+                continue
+        
+        # If all login attempts failed, skip this site
+        if not login_success:
+            print(f"\n[X] Site{label_info} login failed after {LOGIN_RETRY_COUNT} attempts, skipping this site")
+            return False
+        
+        # Re-navigate to target page after successful login
+        print("Re-navigating to target page...")
+        driver.get(site_url)
+        time.sleep(5)  # Wait for page to load
         
         # Check if multi-page update should be executed
         if EXECUTE_MULTI_PAGE_UPDATE:
@@ -679,6 +750,12 @@ def automate_vidnoz(sites_dict=None):
     else:
         print("[i] Multi-page update feature is disabled, only performing regular public style update")
     
+    # Display timing configuration
+    print(f"[i] Login wait time: {LOGIN_WAIT_TIME} seconds")
+    print(f"[i] Site interval time: {SITE_INTERVAL_TIME} seconds")
+    print(f"[i] Login retry attempts: {LOGIN_RETRY_COUNT}")
+    print(f"[i] Deployment wait time: {DEPLOYMENT_WAIT_TIME} seconds")
+    
     # Chrome options setup
     chrome_options = Options()
     chrome_options.add_argument("--no-sandbox")
@@ -700,56 +777,64 @@ def automate_vidnoz(sites_dict=None):
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option("useAutomationExtension", False)
     
-    print("Setting up Chrome driver in headless mode...")
-    driver = webdriver.Chrome(options=chrome_options)
-    
-    # Even in headless mode, we set window size to ensure all elements are accessible
-    driver.set_window_size(1920, 1080)
-    
+    # Add specific site processing
     results = {}
-    try:
-        # Process each site
-        for i, (site_id, site_url) in enumerate(sites_dict.items(), 1):
-            print(f"\n[{i}/{len(sites_dict)}] Processing site [{site_id}]: {site_url}")
-            result = process_site(driver, site_url, site_id)
+    
+    # Process each site with a fresh browser instance to avoid session conflicts
+    for i, (site_id, site_url) in enumerate(sites_dict.items(), 1):
+        print(f"\n[{i}/{len(sites_dict)}] Processing site [{site_id}]: {site_url}")
+        
+        # Create a new browser instance for each site
+        print(f"Starting new Chrome instance for site [{site_id}]...")
+        site_driver = webdriver.Chrome(options=chrome_options)
+        site_driver.set_window_size(1920, 1080)
+        
+        try:
+            # Process this individual site
+            result = process_site(site_driver, site_url, site_id)
             results[site_id] = {
                 'url': site_url,
                 'result': result
             }
+        except Exception as e:
+            print(f"\n[X] Error processing site [{site_id}]: {e}")
+            traceback.print_exc()
+            results[site_id] = {
+                'url': site_url,
+                'result': False
+            }
+        finally:
+            # Close this browser instance
+            print(f"Closing browser for site [{site_id}]...")
+            try:
+                site_driver.quit()
+            except:
+                pass
             
-            # Pause briefly between sites
+            # Pause between sites
             if i < len(sites_dict):
-                print(f"Waiting 5 seconds before next site...")
-                time.sleep(5)
+                print(f"Waiting {SITE_INTERVAL_TIME} seconds before next site...")
+                time.sleep(SITE_INTERVAL_TIME)
     
-    except Exception as e:
-        print(f"\n[X] Error during batch processing: {e}")
-        traceback.print_exc()
+    # Display summary results
+    print("\n===== Batch Processing Results Summary =====")
+    successful = sum(1 for site in results.values() if site['result'] is True)
+    failed = sum(1 for site in results.values() if site['result'] is False)
+    unknown = sum(1 for site in results.values() if site['result'] is None)
     
-    finally:
-        # Close browser
-        print("Closing browser...")
-        driver.quit()
-        
-        # Display summary results
-        print("\n===== Batch Processing Results Summary =====")
-        successful = sum(1 for site in results.values() if site['result'] is True)
-        failed = sum(1 for site in results.values() if site['result'] is False)
-        unknown = sum(1 for site in results.values() if site['result'] is None)
-        
-        print(f"Total sites: {len(results)}")
-        print(f"Successful: {successful}")
-        print(f"Failed: {failed}")
-        print(f"Unknown status: {unknown}")
-        
-        print("\nDetailed results:")
-        for site_id, site_info in results.items():
-            status = "[+] Success" if site_info['result'] is True else "[X] Failed" if site_info['result'] is False else "[!] Unknown"
-            print(f"{status}: [{site_id}] {site_info['url']}")
-        
-        print("\nProgram execution completed.")
-        
-        return results
+    print(f"Total sites: {len(results)}")
+    print(f"Successful: {successful}")
+    print(f"Failed: {failed}")
+    print(f"Unknown status: {unknown}")
+    
+    print("\nDetailed results:")
+    for site_id, site_info in results.items():
+        status = "[+] Success" if site_info['result'] is True else "[X] Failed" if site_info['result'] is False else "[!] Unknown"
+        print(f"{status}: [{site_id}] {site_info['url']}")
+    
+    print("\nProgram execution completed.")
+    
+    return results
 
 def parse_args():
     """Parse command line arguments"""
